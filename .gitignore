@@ -1,0 +1,17 @@
+# Minecraft server runtime files (generated/downloaded)
+server/
+
+# Logs and crash dumps
+*.log
+logs/
+crash-reports/
+
+# Python/pip caches
+__pycache__/
+.venv/
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

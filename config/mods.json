@@ -1,0 +1,8 @@
+{
+  "mods": [
+    { "slug": "fabric-api", "version": "latest" },
+    { "slug": "sodium", "version": "latest" },
+    { "slug": "lithium", "version": "latest" },
+    { "slug": "starlight", "version": "latest" }
+  ]
+}

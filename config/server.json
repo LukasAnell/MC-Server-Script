@@ -1,0 +1,11 @@
+{
+  "minecraft_version": "latest",
+  "fabric_loader_version": "latest",
+  "fabric_installer_version": "latest",
+  "java_memory": "2G",
+  "java_additional_args": "",
+  "server_dir": "server",
+  "mods_manifest": "config/mods.json",
+  "mcdreforged_version": "latest",
+  "accept_eula": true
+}
