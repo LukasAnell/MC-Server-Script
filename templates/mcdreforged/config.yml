@@ -1,0 +1,5 @@
+language: en_us
+encoding: utf8
+working_directory: "."
+start_command: __START_COMMAND__
+stop_command: stop

@@ -5,6 +5,9 @@ ACTION="${1:-install}"
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG="$ROOT/config/server.json"
 MANIFEST="$ROOT/config/mods.json"
+TEMPLATES_DIR="$ROOT/templates/mcdreforged"
+TEMPLATE_CONFIG_PATH="$TEMPLATES_DIR/config.yml"
+TEMPLATE_PERMISSION_PATH="$TEMPLATES_DIR/permission.yml"
 
 require_cmd() {
   if ! command -v "$1" >/dev/null 2>&1; then
@@ -209,13 +212,17 @@ ensure_mcdr_config() {
     cp "$legacy_path" "$MCDR_CONFIG_PATH"
     echo "Copied existing config from $legacy_path to $MCDR_CONFIG_PATH"
   else
-    cat >"$MCDR_CONFIG_PATH" <<EOF
+    if [[ -f "$TEMPLATE_CONFIG_PATH" ]]; then
+      sed "s|__START_COMMAND__|$start_cmd|g" "$TEMPLATE_CONFIG_PATH" >"$MCDR_CONFIG_PATH"
+    else
+      cat >"$MCDR_CONFIG_PATH" <<EOF
 language: en_us
 encoding: utf8
 working_directory: "."
 start_command: $start_cmd
 stop_command: stop
 EOF
+    fi
     echo "Created default MCDReforged config at $MCDR_CONFIG_PATH"
   fi
   if [[ ! -f "$MCDR_PERMISSION_PATH" ]]; then
@@ -223,11 +230,15 @@ EOF
       cp "$legacy_perm" "$MCDR_PERMISSION_PATH"
       echo "Copied existing permission file from $legacy_perm to $MCDR_PERMISSION_PATH"
     else
-      cat >"$MCDR_PERMISSION_PATH" <<'EOF'
+      if [[ -f "$TEMPLATE_PERMISSION_PATH" ]]; then
+        cp "$TEMPLATE_PERMISSION_PATH" "$MCDR_PERMISSION_PATH"
+      else
+        cat >"$MCDR_PERMISSION_PATH" <<'EOF'
 default:
   level: 0
 players: {}
 EOF
+      fi
       echo "Created default MCDReforged permission file at $MCDR_PERMISSION_PATH"
     }
   fi

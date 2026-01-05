@@ -24,6 +24,9 @@ function Load-JsonFile {
 }
 
 $config = Load-JsonFile $configPath
+$templatesDir = Join-Path $root 'templates\mcdreforged'
+$templateConfigPath = Join-Path $templatesDir 'config.yml'
+$templatePermissionPath = Join-Path $templatesDir 'permission.yml'
 $serverDir = Join-Path $root $config.server_dir
 $downloadsDir = Join-Path $serverDir 'downloads'
 $modsDir = Join-Path $serverDir 'mods'
@@ -222,18 +225,25 @@ function Ensure-MCDRConfig {
     if (Test-Path $mcdrConfigPath) {
         Write-Host "MCDReforged config already exists at $mcdrConfigPath; leaving it unchanged."
         return
-    } elseif (Test-Path $legacyPath) {
+    }
+    elseif (Test-Path $legacyPath) {
         Copy-Item -Path $legacyPath -Destination $mcdrConfigPath -Force
         Write-Host "Copied existing config from $legacyPath to $mcdrConfigPath"
-    } else {
-        $configContent = @"
+    }
+    else {
+        if (Test-Path $templateConfigPath) {
+            (Get-Content $templateConfigPath -Raw).Replace('__START_COMMAND__', $StartCommand) | Set-Content -Path $mcdrConfigPath -Encoding UTF8
+        }
+        else {
+            $configContent = @"
 language: en_us
 encoding: utf8
 working_directory: "."
 start_command: $StartCommand
 stop_command: stop
 "@
-        Set-Content -Path $mcdrConfigPath -Value $configContent -Encoding UTF8
+            Set-Content -Path $mcdrConfigPath -Value $configContent -Encoding UTF8
+        }
         Write-Host "Created default MCDReforged config at $mcdrConfigPath"
     }
 
@@ -241,13 +251,19 @@ stop_command: stop
         if (Test-Path $legacyPermissionPath) {
             Copy-Item -Path $legacyPermissionPath -Destination $mcdrPermissionPath -Force
             Write-Host "Copied existing permission file from $legacyPermissionPath to $mcdrPermissionPath"
-        } else {
-            $permissionContent = @"
+        }
+        else {
+            if (Test-Path $templatePermissionPath) {
+                Copy-Item -Path $templatePermissionPath -Destination $mcdrPermissionPath -Force
+            }
+            else {
+                $permissionContent = @"
 default:
   level: 0
 players: {}
 "@
-            Set-Content -Path $mcdrPermissionPath -Value $permissionContent -Encoding UTF8
+                Set-Content -Path $mcdrPermissionPath -Value $permissionContent -Encoding UTF8
+            }
             Write-Host "Created default MCDReforged permission file at $mcdrPermissionPath"
         }
     }
