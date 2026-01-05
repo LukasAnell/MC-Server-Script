@@ -46,8 +46,8 @@ function Start-DirectServer {
 
 function Start-MCDReforged {
     $mcdrConfigPaths = @(
-        Join-Path $serverDir 'config\mcdreforged\config.yml',
-        Join-Path $serverDir 'config\config.yml'
+        (Join-Path -Path $serverDir -ChildPath 'config\config.yml')
+        (Join-Path -Path $serverDir -ChildPath 'config\mcdreforged\config.yml')
     )
     $mcdrConfig = $mcdrConfigPaths | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not $mcdrConfig) {
@@ -55,14 +55,24 @@ function Start-MCDReforged {
         Write-Warning ("Set start_command to: {0}" -f ((Build-JavaCommand) -join ' '))
         return
     }
+    $mcdrPermission = Join-Path -Path (Split-Path -Parent $mcdrConfig) -ChildPath 'permission.yml'
+    if (-not (Test-Path $mcdrPermission)) {
+        $permissionContent = @"
+default:
+  level: 0
+players: {}
+"@
+        Set-Content -Path $mcdrPermission -Value $permissionContent -Encoding UTF8
+        Write-Host "Created default MCDReforged permission file at $mcdrPermission"
+    }
     if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
         Write-Error 'Python not found. Install Python 3 to run MCDReforged or use -Direct.'
         exit 1
     }
     Push-Location $serverDir
     try {
-        Write-Host "Starting MCDReforged using config $mcdrConfig"
-        & python -m mcdreforged
+        Write-Host "Starting MCDReforged using config $mcdrConfig (permission $mcdrPermission)"
+        & python -m mcdreforged start --config $mcdrConfig --permission $mcdrPermission
     } finally {
         Pop-Location
     }

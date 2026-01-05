@@ -27,6 +27,8 @@ print(cfg.get("server_dir", "server"))
 print(cfg.get("minecraft_version", "latest"))
 print(cfg.get("fabric_loader_version", "latest"))
 print(cfg.get("fabric_installer_version", "latest"))
+print(cfg.get("java_memory", "2G"))
+print(cfg.get("java_additional_args", ""))
 print(cfg.get("mcdreforged_version", "latest"))
 print(cfg.get("accept_eula", True))
 PY
@@ -37,17 +39,32 @@ SERVER_DIR="$ROOT/${CFG[0]}"
 MC_VERSION="${CFG[1]}"
 LOADER_VERSION="${CFG[2]}"
 INSTALLER_VERSION="${CFG[3]}"
-MCDR_VERSION="${CFG[4]}"
-ACCEPT_EULA="${CFG[5]}"
+JAVA_MEM="${CFG[4]}"
+JAVA_ARGS="${CFG[5]}"
+MCDR_VERSION="${CFG[6]}"
+ACCEPT_EULA="${CFG[7]}"
 
 DOWNLOADS_DIR="$SERVER_DIR/downloads"
 MODS_DIR="$SERVER_DIR/mods"
+PLUGINS_DIR="$SERVER_DIR/plugins"
+MCDR_CONFIG_DIR="$SERVER_DIR/config"
+MCDR_CONFIG_PATH="$MCDR_CONFIG_DIR/config.yml"
+MCDR_PERMISSION_PATH="$MCDR_CONFIG_DIR/permission.yml"
 
 require_cmd java "Java runtime"
 require_cmd python3 "Python 3"
 require_cmd curl "curl"
 
-ensure_dir "$SERVER_DIR" "$DOWNLOADS_DIR" "$MODS_DIR"
+ensure_dir "$SERVER_DIR" "$DOWNLOADS_DIR" "$MODS_DIR" "$PLUGINS_DIR"
+
+build_start_command() {
+  JAVA_CMD=("java" "-Xmx${JAVA_MEM}")
+  if [[ -n "$JAVA_ARGS" ]]; then
+    read -r -a extra_args <<<"${JAVA_ARGS}"
+    JAVA_CMD+=("${extra_args[@]}")
+  fi
+  JAVA_CMD+=("-jar" "fabric-server-launch.jar" "nogui")
+}
 
 resolve_mc_version() {
   if [[ "$MC_VERSION" != "latest" ]]; then
@@ -66,14 +83,24 @@ PY
 
 resolve_fabric_versions() {
   python3 - <<'PY'
-import json, os, urllib.request
+import json, os, urllib.request, sys
 mc_version = os.environ["MCV"]
 loader = os.environ["LOADER"]
 installer = os.environ["INSTALLER"]
-data = json.load(urllib.request.urlopen(f"https://meta.fabricmc.net/v2/versions/loader/{mc_version}"))
-entry = data[0]
-loader_version = loader if loader != "latest" else entry["loader"]["version"]
-installer_version = installer if installer != "latest" else entry["installer"]["version"]
+loader_data = json.load(urllib.request.urlopen(f"https://meta.fabricmc.net/v2/versions/loader/{mc_version}"))
+if not loader_data:
+    print(f"Unable to resolve Fabric loader versions for Minecraft {mc_version}", file=sys.stderr)
+    sys.exit(1)
+loader_entry = loader_data[0]
+loader_version = loader if loader != "latest" else loader_entry["loader"]["version"]
+if installer != "latest":
+    installer_version = installer
+else:
+    installer_data = json.load(urllib.request.urlopen("https://meta.fabricmc.net/v2/versions/installer"))
+    if not installer_data:
+        print("Unable to resolve Fabric installer version (empty installer list)", file=sys.stderr)
+        sys.exit(1)
+    installer_version = installer_data[0]["version"]
 print(loader_version)
 print(installer_version)
 PY
@@ -171,11 +198,48 @@ install_mcdr() {
   python3 -m pip install --upgrade --user "$pkg"
 }
 
+ensure_mcdr_config() {
+  local start_cmd="$1"
+  mkdir -p "$MCDR_CONFIG_DIR"
+  local legacy_path="$SERVER_DIR/config/mcdreforged/config.yml"
+  local legacy_perm="$SERVER_DIR/config/mcdreforged/permission.yml"
+  if [[ -f "$MCDR_CONFIG_PATH" ]]; then
+    echo "MCDReforged config already exists at $MCDR_CONFIG_PATH; leaving unchanged."
+  elif [[ -f "$legacy_path" ]]; then
+    cp "$legacy_path" "$MCDR_CONFIG_PATH"
+    echo "Copied existing config from $legacy_path to $MCDR_CONFIG_PATH"
+  else
+    cat >"$MCDR_CONFIG_PATH" <<EOF
+language: en_us
+encoding: utf8
+working_directory: "."
+start_command: $start_cmd
+stop_command: stop
+EOF
+    echo "Created default MCDReforged config at $MCDR_CONFIG_PATH"
+  fi
+  if [[ ! -f "$MCDR_PERMISSION_PATH" ]]; then
+    if [[ -f "$legacy_perm" ]]; then
+      cp "$legacy_perm" "$MCDR_PERMISSION_PATH"
+      echo "Copied existing permission file from $legacy_perm to $MCDR_PERMISSION_PATH"
+    else
+      cat >"$MCDR_PERMISSION_PATH" <<'EOF'
+default:
+  level: 0
+players: {}
+EOF
+      echo "Created default MCDReforged permission file at $MCDR_PERMISSION_PATH"
+    }
+  fi
+}
+
 MCV_RESOLVED="$(resolve_mc_version)"
 export MCV="$MCV_RESOLVED" LOADER="$LOADER_VERSION" INSTALLER="$INSTALLER_VERSION"
 mapfile -t FABRIC_VER < <(resolve_fabric_versions)
 RESOLVED_LOADER="${FABRIC_VER[0]}"
 RESOLVED_INSTALLER="${FABRIC_VER[1]}"
+build_start_command
+START_CMD_STR="${JAVA_CMD[*]}"
 
 case "$ACTION" in
   install)
@@ -183,6 +247,7 @@ case "$ACTION" in
     ensure_eula
     install_mods "$MCV_RESOLVED"
     install_mcdr "$MCDR_VERSION"
+    ensure_mcdr_config "$START_CMD_STR"
     echo "Install complete. Configure and start MCDReforged inside $SERVER_DIR."
     ;;
   update-mods)

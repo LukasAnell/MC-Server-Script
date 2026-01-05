@@ -27,6 +27,10 @@ $config = Load-JsonFile $configPath
 $serverDir = Join-Path $root $config.server_dir
 $downloadsDir = Join-Path $serverDir 'downloads'
 $modsDir = Join-Path $serverDir 'mods'
+$pluginsDir = Join-Path $serverDir 'plugins'
+$mcdrConfigDir = Join-Path $serverDir 'config'
+$mcdrConfigPath = Join-Path $mcdrConfigDir 'config.yml'
+$mcdrPermissionPath = Join-Path $mcdrConfigDir 'permission.yml'
 
 function Ensure-Dir {
     param([string]$Path)
@@ -68,13 +72,26 @@ function Resolve-FabricVersions {
         [string]$LoaderVersion,
         [string]$InstallerVersion
     )
-    $response = Invoke-RestMethod -Uri "https://meta.fabricmc.net/v2/versions/loader/$MinecraftVersion"
-    $entry = $response | Select-Object -First 1
-    if (-not $entry) {
-        throw "Unable to resolve Fabric versions for Minecraft $MinecraftVersion"
+    $loaderResponse = Invoke-RestMethod -Uri "https://meta.fabricmc.net/v2/versions/loader/$MinecraftVersion"
+    $loaderEntry = $loaderResponse | Select-Object -First 1
+    if (-not $loaderEntry) {
+        throw "Unable to resolve Fabric loader versions for Minecraft $MinecraftVersion"
     }
-    $resolvedLoader = if ($LoaderVersion -eq 'latest') { $entry.loader.version } else { $LoaderVersion }
-    $resolvedInstaller = if ($InstallerVersion -eq 'latest') { $entry.installer.version } else { $InstallerVersion }
+    $resolvedLoader = if ($LoaderVersion -eq 'latest') { $loaderEntry.loader.version } else { $LoaderVersion }
+
+    $resolvedInstaller = $null
+    if ($InstallerVersion -eq 'latest') {
+        $installerResponse = Invoke-RestMethod -Uri 'https://meta.fabricmc.net/v2/versions/installer'
+        $resolvedInstaller = ($installerResponse | Select-Object -First 1).version
+    }
+    else {
+        $resolvedInstaller = $InstallerVersion
+    }
+
+    if (-not $resolvedInstaller) {
+        throw 'Unable to resolve Fabric installer version (installer endpoint returned empty).'
+    }
+
     return @{
         loader    = $resolvedLoader
         installer = $resolvedInstaller
@@ -197,15 +214,56 @@ function Install-MCDReforged {
     & python -m pip install --upgrade --user $package
 }
 
+function Ensure-MCDRConfig {
+    param([string]$StartCommand)
+    Ensure-Dir $mcdrConfigDir
+    $legacyPath = Join-Path $mcdrConfigDir 'mcdreforged\config.yml'
+    $legacyPermissionPath = Join-Path $mcdrConfigDir 'mcdreforged\permission.yml'
+    if (Test-Path $mcdrConfigPath) {
+        Write-Host "MCDReforged config already exists at $mcdrConfigPath; leaving it unchanged."
+        return
+    } elseif (Test-Path $legacyPath) {
+        Copy-Item -Path $legacyPath -Destination $mcdrConfigPath -Force
+        Write-Host "Copied existing config from $legacyPath to $mcdrConfigPath"
+    } else {
+        $configContent = @"
+language: en_us
+encoding: utf8
+working_directory: "."
+start_command: $StartCommand
+stop_command: stop
+"@
+        Set-Content -Path $mcdrConfigPath -Value $configContent -Encoding UTF8
+        Write-Host "Created default MCDReforged config at $mcdrConfigPath"
+    }
+
+    if (-not (Test-Path $mcdrPermissionPath)) {
+        if (Test-Path $legacyPermissionPath) {
+            Copy-Item -Path $legacyPermissionPath -Destination $mcdrPermissionPath -Force
+            Write-Host "Copied existing permission file from $legacyPermissionPath to $mcdrPermissionPath"
+        } else {
+            $permissionContent = @"
+default:
+  level: 0
+players: {}
+"@
+            Set-Content -Path $mcdrPermissionPath -Value $permissionContent -Encoding UTF8
+            Write-Host "Created default MCDReforged permission file at $mcdrPermissionPath"
+        }
+    }
+}
+
 Assert-Command -Name 'java' -Description 'Java runtime'
 Assert-Command -Name 'python' -Description 'Python 3'
 
 Ensure-Dir $serverDir
 Ensure-Dir $downloadsDir
 Ensure-Dir $modsDir
+Ensure-Dir $pluginsDir
 
 $mcVersion = Resolve-MinecraftVersion -Version $config.minecraft_version
 $fabric = Resolve-FabricVersions -MinecraftVersion $mcVersion -LoaderVersion $config.fabric_loader_version -InstallerVersion $config.fabric_installer_version
+$startCommand = @("java", "-Xmx$($config.java_memory)") + ($config.java_additional_args -split ' ' | Where-Object { $_ -ne '' }) + @("-jar", "fabric-server-launch.jar", "nogui")
 
 switch ($Action) {
     'install' {
@@ -213,6 +271,7 @@ switch ($Action) {
         Ensure-Eula
         Install-Mods -MinecraftVersion $mcVersion
         Install-MCDReforged -Version $config.mcdreforged_version
+        Ensure-MCDRConfig -StartCommand ($startCommand -join ' ')
         Write-Host "Install complete. Configure MCDReforged in $serverDir before starting."
     }
     'update-mods' {

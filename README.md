@@ -21,6 +21,7 @@
 - Accept the EULA automatically if `accept_eula` is true in `config/server.json`.
 - Download Modrinth mods listed in `config/mods.json` into `server/mods/`.
 - Install MCDReforged via `pip` (user install).
+- If no MCDReforged config exists, create `server/config/config.yml` with a default `start_command` matching your memory/flags (copies old `config/mcdreforged/config.yml` if present). Also creates `server/config/permission.yml` if missing.
 
 ## Layout and config
 - `config/server.json`: global settings (versions, memory flags, EULA). Default server directory is `server/`.
@@ -28,11 +29,10 @@
 - `server/`: created by the install scripts; contains Fabric server files, `mods/`, `downloads/`, and runtime output.
 
 ## MCDReforged setup
-- The scripts install the MCDReforged package but do not generate its config for you.
-- Create `server/config/mcdreforged/config.yml` (or `server/config/config.yml`) using MCDReforged's template, and set `start_command` to the Java line you want. With defaults this is:
-  - `java -Xmx2G -jar fabric-server-launch.jar nogui`
-  - Include any `java_additional_args` you set in `config/server.json`.
-- Once the config exists, `start.ps1` / `start.sh` will launch MCDReforged from `server/`. If no config is found, the scripts will tell you and you can rerun with `-Direct`/`--direct` to bypass MCDReforged.
+- The install scripts will create a minimal config at `server/config/config.yml` if none exists (or copy from `server/config/mcdreforged/config.yml`), setting `start_command` from your `config/server.json` memory/flags. They also create `server/config/permission.yml` (or copy from `server/config/mcdreforged/permission.yml`).
+- If you already have a config before running install, it is left untouched.
+- You can edit the generated file to add language, permission levels, plugin paths, etc.
+- `start.ps1` / `start.sh` launch MCDReforged from `server/` using explicit `--config` and `--permission` arguments. If you prefer to skip it, use `-Direct`/`--direct` to start the Fabric server directly.
 
 ## Mod manifest format (`config/mods.json`)
 - Example:

@@ -58,13 +58,23 @@ start_mcdr() {
     echo "Run with --direct to start without MCDReforged." >&2
     exit 1
   fi
+  local mcdr_perm
+  mcdr_perm="$(dirname "$mcdr_config")/permission.yml"
+  if [[ ! -f "$mcdr_perm" ]]; then
+    cat >"$mcdr_perm" <<'EOF'
+default:
+  level: 0
+players: {}
+EOF
+    echo "Created default MCDReforged permission file at $mcdr_perm"
+  fi
   if ! command -v python3 >/dev/null 2>&1; then
     echo "Python 3 not found. Install Python 3 or use --direct." >&2
     exit 1
   fi
   pushd "$SERVER_DIR" >/dev/null
-  echo "Starting MCDReforged (config: $mcdr_config)"
-  python3 -m mcdreforged
+  echo "Starting MCDReforged (config: $mcdr_config, permission: $mcdr_perm)"
+  python3 -m mcdreforged start --config "$mcdr_config" --permission "$mcdr_perm"
   popd >/dev/null
 }
 
